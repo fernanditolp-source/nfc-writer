@@ -665,8 +665,11 @@ async function startNfcRead() {
     const ndef = new NDEFReader();
     await ndef.scan({ signal: state.abortController.signal });
 
-    ndef.onreadingerror = () => {
-      showToast('Error al leer el chip. Intenta apoyarlo nuevamente.', 'error');
+    ndef.onreadingerror = (event) => {
+      const readError = new Error('Chrome no pudo leer un mensaje NDEF válido desde la etiqueta. Puede estar vacía, sin formato NDEF, bloqueada o haberse retirado demasiado rápido.');
+      readError.name = 'NFCReadingError';
+      recordError(readError, 'Lectura de etiqueta');
+      showToast('La etiqueta no contiene un mensaje NDEF legible. Intenta otra etiqueta.', 'error');
       playSound('error');
     };
 
