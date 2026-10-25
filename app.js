@@ -6,6 +6,7 @@
 // State Management
 const HISTORY_KEY = 'nfc_studio_history_v2';
 const HISTORY_SETTING_KEY = 'nfc_studio_history_enabled';
+const ERROR_LOG_KEY = 'nfc_studio_error_log_v1';
 const TAG_CAPACITIES = Object.freeze({
   NTAG213: 144,
   NTAG215: 504,
@@ -16,6 +17,15 @@ function readHistory() {
   try {
     const stored = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
     return Array.isArray(stored) ? stored : [];
+  } catch (error) {
+    return [];
+  }
+}
+
+function readErrorLog() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(ERROR_LOG_KEY) || '[]');
+    return Array.isArray(stored) ? stored.slice(0, 20) : [];
   } catch (error) {
     return [];
   }
@@ -32,6 +42,7 @@ const state = {
   abortController: null,
   selectedTag: 'NTAG213',
   history: readHistory(),
+  errorLog: readErrorLog(),
   historyEnabled: localStorage.getItem(HISTORY_SETTING_KEY) === 'true',
 };
 
@@ -155,6 +166,45 @@ function showToast(message, type = 'info') {
     toast.style.transform = 'translateY(10px)';
     setTimeout(() => toast.remove(), 250);
   }, 3500);
+}
+
+function recordError(error, context) {
+  const item = {
+    date: new Date().toLocaleString([], { dateStyle: 'short', timeStyle: 'medium' }),
+    context,
+    name: error?.name || 'Error',
+    message: error?.message || String(error || 'Error desconocido')
+  };
+  state.errorLog.unshift(item);
+  state.errorLog = state.errorLog.slice(0, 20);
+  localStorage.setItem(ERROR_LOG_KEY, JSON.stringify(state.errorLog));
+  renderErrorLog();
+}
+
+function renderErrorLog() {
+  const list = document.getElementById('error-log-list');
+  const empty = document.getElementById('error-log-empty');
+  if (!list || !empty) return;
+
+  list.replaceChildren();
+  if (!state.errorLog.length) {
+    list.appendChild(empty);
+    empty.style.display = 'block';
+    return;
+  }
+
+  state.errorLog.forEach(item => {
+    const row = document.createElement('article');
+    row.className = 'error-log-item';
+    const meta = document.createElement('div');
+    meta.className = 'error-log-meta';
+    meta.textContent = `${item.date} · ${item.context} · ${item.name}`;
+    const message = document.createElement('div');
+    message.className = 'error-log-message';
+    message.textContent = item.message;
+    row.append(meta, message);
+    list.appendChild(row);
+  });
 }
 
 // Check Web NFC support and Secure Context
@@ -470,6 +520,7 @@ async function startNfcWrite() {
   try {
     recordsData = buildRecords();
   } catch (err) {
+    recordError(err, 'Preparación de grabación');
     showToast(err.message, 'error');
     playSound('error');
     return;
@@ -478,7 +529,9 @@ async function startNfcWrite() {
   const estimatedBytes = estimateRecordBytes(recordsData.records);
   const tagCapacity = getSelectedTagCapacity();
   if (estimatedBytes > tagCapacity) {
-    showToast(`El contenido ocupa aproximadamente ${estimatedBytes}B y supera la capacidad del ${state.selectedTag} (${tagCapacity}B).`, 'error');
+    const capacityError = new Error(`El contenido ocupa aproximadamente ${estimatedBytes}B y supera la capacidad del ${state.selectedTag} (${tagCapacity}B).`);
+    recordError(capacityError, 'Capacidad del chip');
+    showToast(capacityError.message, 'error');
     playSound('error');
     return;
   }
@@ -521,7 +574,7 @@ async function startNfcWrite() {
       setModalStatus('Acerca el chip a la antena del teléfono...');
       playSound('ping');
 
-      await ndef.write(recordsData.records, { signal, overwrite: true });
+      await ndef.write({ records: recordsData.records }, { signal, overwrite: true });
 
       if (isLock) {
         setModalStatus('Bloqueando chip como solo lectura...');
@@ -544,6 +597,7 @@ async function startNfcWrite() {
     if (err.name === 'AbortError') {
       console.log('Operación NFC cancelada por el usuario');
     } else {
+      recordError(err, 'Grabación NFC');
       console.error('Error al escribir NFC:', err);
       let msg = 'Error al escribir el chip';
       if (err.name === 'NotAllowedError') {
@@ -625,6 +679,7 @@ async function startNfcRead() {
 
   } catch (err) {
     if (err.name !== 'AbortError') {
+      recordError(err, 'Lectura NFC');
       showToast('No se pudo activar el lector NFC: ' + err.message, 'error');
       playSound('error');
     }
@@ -934,6 +989,12 @@ function init() {
     }
   });
 
+  document.getElementById('btn-clear-error-log').addEventListener('click', () => {
+    state.errorLog = [];
+    localStorage.removeItem(ERROR_LOG_KEY);
+    renderErrorLog();
+  });
+
   document.getElementById('btn-clear-history').addEventListener('click', () => {
     if (confirm('¿Deseas borrar todo el historial?')) {
       state.history = [];
@@ -956,6 +1017,7 @@ function init() {
   // Initial calculation and history render
   updateSizeEstimate();
   renderHistory();
+  renderErrorLog();
 }
 
 document.addEventListener('DOMContentLoaded', init);

@@ -648,6 +648,48 @@ textarea:focus {
   margin-top: 10px;
 }
 
+.error-log-section {
+  margin-top: 24px;
+  padding-top: 18px;
+  border-top: 1px solid var(--card-border);
+}
+
+.error-log-header {
+  margin-bottom: 8px;
+}
+
+.error-log-header h3 {
+  font-size: 0.95rem;
+}
+
+.error-log-container {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.error-log-item {
+  padding: 10px 12px;
+  border-left: 3px solid var(--accent-red);
+  border-radius: var(--radius-sm);
+  background: rgba(239, 68, 68, 0.08);
+}
+
+.error-log-meta {
+  color: var(--text-muted);
+  font-size: 0.68rem;
+}
+
+.error-log-message {
+  margin-top: 4px;
+  color: #fecaca;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  overflow-wrap: anywhere;
+}
+
 /* Size Indicator */
 .size-indicator-bar {
   margin-bottom: 18px;
