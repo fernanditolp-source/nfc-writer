@@ -38,18 +38,18 @@ Si tienes que grabar 10, 50 o 100 chips con la misma información (o consecutivo
 - Simplemente ve apoyando un chip tras otro sobre la espalda del celular. La app emitirá un sonido de éxito y actualizará el contador automáticamente sin que tengas que volver a pulsar la pantalla.
 
 ### 3. Estimador de Capacidad en Tiempo Real
-Te indica cuántos bytes ocupará tu mensaje y si entra en un chip **NTAG213** (144 bytes), **NTAG215** (504 bytes) o **NTAG216** (888 bytes).
+Te indica una estimación del tamaño del mensaje y la compara con las capacidades habituales de **NTAG213** (144 bytes), **NTAG215** (504 bytes) y **NTAG216** (888 bytes). La capacidad exacta depende del chip y del formato NDEF.
 
 ### 4. Opción de Bloqueo (Solo Lectura)
 Interruptor de seguridad para proteger el chip contra sobreescrituras accidentales o intencionales (ideal para credenciales de acceso o tarjetas públicas).
 
-### 5. Lector y Clonador NFC
+### 5. Lector y Copiador de Contenido NFC
 - Lee el número de serie único (**UID**) del chip.
 - Decodifica todos los registros NDEF contenidos.
-- Botón **"Cargar este contenido en el Grabador"** para clonar un chip fácilmente.
+- Botón **"Cargar este contenido en el Grabador"** para copiar el contenido NDEF. No copia el UID ni los bloques de memoria del chip.
 
-### 6. Historial Local
-Guarda automáticamente los últimos chips grabados en la memoria del navegador (`localStorage`) para que puedas reutilizar cualquier configuración con un solo clic.
+### 6. Historial Local opcional
+El historial está desactivado por defecto. Si lo activas desde la pestaña **Historial**, las plantillas se guardan localmente en el navegador para reutilizarlas. No se envían a ningún servidor, pero en plantillas Wi-Fi pueden incluir contraseñas: no actives esta opción en un dispositivo compartido.
 
 ---
 

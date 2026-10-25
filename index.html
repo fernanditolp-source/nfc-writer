@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>NFC Studio Web - Grabar y Leer Chips NFC</title>
   <meta name="description" content="Aplicación web para grabar y leer chips NFC (NTAG213, NTAG215, NTAG216) en dispositivos Android directamente desde Google Chrome.">
   <meta name="theme-color" content="#0d1117">
@@ -319,7 +319,13 @@
           <h2>Historial de Grabación</h2>
           <button id="btn-clear-history" class="btn-mini-danger">Borrar Todo</button>
         </div>
-        <p class="section-desc">Registro de chips grabados en este dispositivo. Puedes reutilizar cualquier plantilla con un clic.</p>
+        <p class="section-desc">Registro opcional guardado solamente en este dispositivo. No se guarda por defecto para proteger contraseñas y datos personales.</p>
+
+        <label class="checkbox-container history-consent">
+          <input type="checkbox" id="chk-save-history">
+          <span class="checkbox-mark"></span>
+          Guardar plantillas en este dispositivo
+        </label>
 
         <div id="history-list" class="history-container">
           <div class="empty-state" id="history-empty">

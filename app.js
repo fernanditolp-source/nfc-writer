@@ -4,6 +4,18 @@
  */
 
 // State Management
+const HISTORY_KEY = 'nfc_studio_history_v2';
+const HISTORY_SETTING_KEY = 'nfc_studio_history_enabled';
+
+function readHistory() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
+    return Array.isArray(stored) ? stored : [];
+  } catch (error) {
+    return [];
+  }
+}
+
 const state = {
   soundEnabled: true,
   isNfcSupported: false,
@@ -13,7 +25,8 @@ const state = {
   isReading: false,
   batchCount: 0,
   abortController: null,
-  history: JSON.parse(localStorage.getItem('nfc_studio_history') || '[]'),
+  history: readHistory(),
+  historyEnabled: localStorage.getItem(HISTORY_SETTING_KEY) === 'true',
 };
 
 // Web Audio API Synthesizer (No external MP3 files needed)
@@ -94,6 +107,15 @@ function triggerVibrate(pattern = [80, 50, 80]) {
   }
 }
 
+function escapeWifiField(value) {
+  return String(value)
+    .split('\\').join('\\\\')
+    .split(';').join('\\;')
+    .split(':').join('\\:')
+    .split(',').join('\\,')
+    .split('"').join('\\"');
+}
+
 // Toast notification helper
 function showToast(message, type = 'info') {
   const container = document.getElementById('toast-container');
@@ -101,7 +123,10 @@ function showToast(message, type = 'info') {
   toast.className = `toast ${type}`;
   
   const icon = type === 'success' ? '✅' : type === 'error' ? '❌' : 'ℹ️';
-  toast.innerHTML = `<span>${icon}</span> <span>${message}</span>`;
+  toast.replaceChildren(
+    Object.assign(document.createElement('span'), { textContent: icon }),
+    Object.assign(document.createElement('span'), { textContent: String(message) })
+  );
   container.appendChild(toast);
 
   setTimeout(() => {
@@ -155,6 +180,15 @@ function buildRecords() {
       if (!/^https?:\/\//i.test(rawUrl)) {
         rawUrl = 'https://' + rawUrl;
       }
+      try {
+        const parsedUrl = new URL(rawUrl);
+        if (!['http:', 'https:'].includes(parsedUrl.protocol) || !parsedUrl.hostname) {
+          throw new Error();
+        }
+        rawUrl = parsedUrl.href;
+      } catch (error) {
+        throw new Error('Ingresa una URL válida (por ejemplo, ejemplo.com)');
+      }
       records = [{ recordType: 'url', data: rawUrl }];
       summaryText = rawUrl;
       break;
@@ -182,14 +216,25 @@ function buildRecords() {
       }
 
       const fullName = [fname, lname].filter(Boolean).join(' ');
+      const escapeVCard = value => String(value).replace(/[\\;,\r\n]/g, match => ({
+        '\\': '\\\\', ';': '\\;', ',': '\\,', '\r': '\\n', '\n': '\\n'
+      }[match]));
       let vcard = 'BEGIN:VCARD\r\nVERSION:3.0\r\n';
-      vcard += `N:${lname};${fname};;;\r\n`;
-      vcard += `FN:${fullName || 'Contacto NFC'}\r\n`;
-      if (org) vcard += `ORG:${org}\r\n`;
-      if (title) vcard += `TITLE:${title}\r\n`;
+      vcard += `N:${escapeVCard(lname)};${escapeVCard(fname)};;;\r\n`;
+      vcard += `FN:${escapeVCard(fullName || 'Contacto NFC')}\r\n`;
+      if (org) vcard += `ORG:${escapeVCard(org)}\r\n`;
+      if (title) vcard += `TITLE:${escapeVCard(title)}\r\n`;
       if (phone) vcard += `TEL;TYPE=CELL,VOICE:${phone}\r\n`;
       if (email) vcard += `EMAIL;TYPE=PREF,INTERNET:${email}\r\n`;
-      if (url) vcard += `URL:${url}\r\n`;
+      if (url) {
+        try {
+          const parsedUrl = new URL(url);
+          if (!['http:', 'https:'].includes(parsedUrl.protocol)) throw new Error();
+        } catch (error) {
+          throw new Error('El sitio web del contacto no es válido');
+        }
+        vcard += `URL:${url}\r\n`;
+      }
       vcard += 'END:VCARD';
 
       records = [{
@@ -210,7 +255,7 @@ function buildRecords() {
       if (!ssid) throw new Error('Por favor ingresa el nombre de la red Wi-Fi (SSID)');
 
       // Standard Android Wi-Fi tag format: WIFI:S:<SSID>;T:<WPA|WEP|nopass>;P:<PASSWORD>;H:<true|false>;;
-      const wifiPayload = `WIFI:S:${ssid};T:${auth};P:${pass};H:${hidden ? 'true' : 'false'};;`;
+      const wifiPayload = `WIFI:S:${escapeWifiField(ssid)};T:${auth};P:${escapeWifiField(pass)};H:${hidden ? 'true' : 'false'};;`;
       records = [{ recordType: 'text', data: wifiPayload }];
       summaryText = `Wi-Fi: ${ssid} (${auth})`;
       break;
@@ -257,6 +302,9 @@ function buildRecords() {
       const mime = document.getElementById('custom-mime').value.trim() || 'application/json';
       const content = document.getElementById('custom-data').value.trim();
       if (!content) throw new Error('Ingresa los datos para el registro personalizado');
+      if (!/^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/i.test(mime)) {
+        throw new Error('El tipo MIME no es válido');
+      }
 
       records = [{
         recordType: 'mime',
@@ -306,17 +354,42 @@ function updateSizeEstimate() {
 }
 
 // Save write action to History
-function saveToHistory(summaryText, type, payload) {
+function getFormSnapshot(type) {
+  const selectors = {
+    url: ['input-url'], text: ['input-text'],
+    vcard: ['vcard-fname', 'vcard-lname', 'vcard-phone', 'vcard-email', 'vcard-org', 'vcard-title', 'vcard-url'],
+    wifi: ['wifi-ssid', 'wifi-pass', 'wifi-auth', 'wifi-hidden'],
+    whatsapp: ['wa-phone', 'wa-msg'], phone: ['phone-number'],
+    email: ['email-to', 'email-subject', 'email-body'], json: ['custom-mime', 'custom-data']
+  }[type] || [];
+  return Object.fromEntries(selectors.map(id => {
+    const el = document.getElementById(id);
+    return [id, el?.type === 'checkbox' ? el.checked : (el?.value || '')];
+  }));
+}
+
+function applyFormSnapshot(fields) {
+  Object.entries(fields || {}).forEach(([id, value]) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (el.type === 'checkbox') el.checked = Boolean(value);
+    else el.value = value;
+  });
+}
+
+function saveToHistory(summaryText, type) {
   const item = {
     id: Date.now(),
     date: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     type,
     summary: summaryText,
-    payload
+    fields: getFormSnapshot(type)
   };
   state.history.unshift(item);
   if (state.history.length > 50) state.history.pop();
-  localStorage.setItem('nfc_studio_history', JSON.stringify(state.history));
+  if (state.historyEnabled) {
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(state.history));
+  }
   renderHistory();
 }
 
@@ -355,7 +428,9 @@ function loadHistoryItem(item) {
   switchTab('tab-write');
   selectType(item.type);
 
-  if (item.type === 'url') {
+  if (item.fields) {
+    applyFormSnapshot(item.fields);
+  } else if (item.type === 'url') {
     document.getElementById('input-url').value = item.summary.replace(/^https?:\/\//, '');
   } else if (item.type === 'text') {
     document.getElementById('input-text').value = item.summary;
@@ -401,7 +476,7 @@ async function startNfcWrite() {
   if (!state.isNfcSupported || state.isSimulatorActive) {
     // Simulator flow
     setupSimulatorTrigger(async () => {
-      handleSuccessfulWrite(recordsData, isBatch, isLock);
+      handleSuccessfulWrite(recordsData, isBatch, false, true);
     });
     return;
   }
@@ -411,27 +486,32 @@ async function startNfcWrite() {
     const ndef = new NDEFReader();
     const signal = state.abortController.signal;
 
+    if (isLock && typeof ndef.makeReadOnly !== 'function') {
+      throw new Error('Este navegador no permite bloquear chips como solo lectura.');
+    }
+
     const performWrite = async () => {
       setModalStatus('Acerca el chip a la antena del teléfono...');
       playSound('ping');
 
       await ndef.write(recordsData.records, { signal, overwrite: true });
 
-      if (isLock && 'makeReadOnly' in ndef) {
+      if (isLock) {
         setModalStatus('Bloqueando chip como solo lectura...');
         await ndef.makeReadOnly({ signal });
       }
 
-      handleSuccessfulWrite(recordsData, isBatch, isLock);
-
-      if (isBatch && state.isWriting) {
-        // Continuous writing loop
-        setModalStatus('Chip grabado ✅. Acerca el SIGUIENTE chip...');
-        await performWrite();
-      }
+      handleSuccessfulWrite(recordsData, isBatch, isLock, false);
     };
 
-    await performWrite();
+    if (isBatch) {
+      while (state.isWriting) {
+        await performWrite();
+        if (state.isWriting) setModalStatus('Chip grabado ✅. Acerca el SIGUIENTE chip...');
+      }
+    } else {
+      await performWrite();
+    }
 
   } catch (err) {
     if (err.name === 'AbortError') {
@@ -446,20 +526,21 @@ async function startNfcWrite() {
       } else if (err.name === 'NetworkError') {
         msg = 'Chip retirado demasiado rápido. Mantenlo firme.';
       }
-      showToast(msg, 'error');
+      showToast(err.message && err.message.startsWith('Este navegador') ? err.message : msg, 'error');
       playSound('error');
       closeModal();
     }
   }
 }
 
-function handleSuccessfulWrite(recordsData, isBatch, isLock) {
+function handleSuccessfulWrite(recordsData, isBatch, isLock, simulated = false) {
   state.batchCount++;
   playSound('success');
   triggerVibrate([100, 50, 100, 50, 150]);
-  saveToHistory(recordsData.summaryText, recordsData.type, recordsData.records);
+  saveToHistory(recordsData.summaryText, recordsData.type);
 
-  showToast(`¡Chip grabado con éxito! ${isLock ? '(Bloqueado)' : ''}`, 'success');
+  const lockLabel = isLock ? ' (Bloqueado)' : '';
+  showToast(`¡Chip grabado con éxito!${lockLabel}${simulated ? ' (Simulación)' : ''}`, 'success');
 
   if (isBatch) {
     document.getElementById('batch-count-num').textContent = state.batchCount;
@@ -697,6 +778,13 @@ function selectType(type) {
 function init() {
   checkNfcCompatibility();
 
+  // Remove the legacy history format, which stored complete payloads (including
+  // possible Wi-Fi passwords) without an explicit opt-in.
+  if (localStorage.getItem('nfc_studio_history')) {
+    localStorage.removeItem('nfc_studio_history');
+    showToast('Se eliminó el historial antiguo por seguridad.', 'info');
+  }
+
   // Tab buttons
   document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -784,10 +872,26 @@ function init() {
   });
 
   // Clear history
+  const historyConsent = document.getElementById('chk-save-history');
+  historyConsent.checked = state.historyEnabled;
+  historyConsent.addEventListener('change', () => {
+    state.historyEnabled = historyConsent.checked;
+    localStorage.setItem(HISTORY_SETTING_KEY, String(state.historyEnabled));
+    if (state.historyEnabled) {
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(state.history));
+      showToast('Historial local activado', 'info');
+    } else {
+      localStorage.removeItem(HISTORY_KEY);
+      state.history = [];
+      renderHistory();
+      showToast('Historial local desactivado y borrado', 'info');
+    }
+  });
+
   document.getElementById('btn-clear-history').addEventListener('click', () => {
     if (confirm('¿Deseas borrar todo el historial?')) {
       state.history = [];
-      localStorage.removeItem('nfc_studio_history');
+      localStorage.removeItem(HISTORY_KEY);
       renderHistory();
       showToast('Historial vaciado', 'info');
     }
