@@ -552,6 +552,12 @@ async function startNfcWrite() {
         msg = 'Dispositivo o chip no compatible con NDEF';
       } else if (err.name === 'NetworkError') {
         msg = 'Chip retirado demasiado rápido. Mantenlo firme.';
+      } else if (err.name === 'InvalidStateError') {
+        msg = 'Mantén Chrome visible y la pantalla desbloqueada mientras acercas el chip.';
+      } else if (err.name === 'SecurityError') {
+        msg = 'Chrome bloqueó el acceso NFC. Abre la página directamente en HTTPS y acepta el permiso.';
+      } else if (err.message) {
+        msg = `No se pudo grabar: ${err.message}`;
       }
       showToast(err.message && err.message.startsWith('Este navegador') ? err.message : msg, 'error');
       playSound('error');
