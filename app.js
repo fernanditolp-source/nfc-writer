@@ -6,6 +6,11 @@
 // State Management
 const HISTORY_KEY = 'nfc_studio_history_v2';
 const HISTORY_SETTING_KEY = 'nfc_studio_history_enabled';
+const TAG_CAPACITIES = Object.freeze({
+  NTAG213: 144,
+  NTAG215: 504,
+  NTAG216: 888
+});
 
 function readHistory() {
   try {
@@ -25,6 +30,7 @@ const state = {
   isReading: false,
   batchCount: 0,
   abortController: null,
+  selectedTag: 'NTAG213',
   history: readHistory(),
   historyEnabled: localStorage.getItem(HISTORY_SETTING_KEY) === 'true',
 };
@@ -114,6 +120,21 @@ function escapeWifiField(value) {
     .split(':').join('\\:')
     .split(',').join('\\,')
     .split('"').join('\\"');
+}
+
+function estimateRecordBytes(records) {
+  return records.reduce((total, record) => {
+    const payloadBytes = typeof record.data === 'string'
+      ? new TextEncoder().encode(record.data).length
+      : record.data instanceof Uint8Array
+        ? record.data.length
+        : 0;
+    return total + payloadBytes + 8;
+  }, 0);
+}
+
+function getSelectedTagCapacity() {
+  return TAG_CAPACITIES[state.selectedTag] || TAG_CAPACITIES.NTAG213;
 }
 
 // Toast notification helper
@@ -323,27 +344,21 @@ function buildRecords() {
 function updateSizeEstimate() {
   try {
     const { records } = buildRecords();
-    let bytes = 0;
-    records.forEach(r => {
-      if (typeof r.data === 'string') {
-        bytes += new TextEncoder().encode(r.data).length;
-      } else if (r.data instanceof Uint8Array) {
-        bytes += r.data.length;
-      }
-      bytes += 8; // approximate NDEF header overhead
-    });
+    const bytes = estimateRecordBytes(records);
+    const capacity = getSelectedTagCapacity();
 
     const countEl = document.getElementById('bytes-count');
     const fillEl = document.getElementById('size-progress');
+    const capacityLabel = document.getElementById('chip-capacity-label');
     countEl.textContent = bytes;
+    capacityLabel.textContent = `Capacidad seleccionada: ${state.selectedTag} (${capacity}B)`;
 
-    // Relative to NTAG213 (144 bytes)
-    const pct = Math.min(100, Math.round((bytes / 144) * 100));
+    const pct = Math.min(100, Math.round((bytes / capacity) * 100));
     fillEl.style.width = `${Math.max(5, pct)}%`;
 
-    if (bytes > 888) {
+    if (bytes > capacity) {
       fillEl.className = 'progress-fill danger';
-    } else if (bytes > 144) {
+    } else if (bytes > capacity * 0.8) {
       fillEl.className = 'progress-fill warning';
     } else {
       fillEl.className = 'progress-fill';
@@ -382,6 +397,7 @@ function saveToHistory(summaryText, type) {
     id: Date.now(),
     date: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     type,
+    tag: state.selectedTag,
     summary: summaryText,
     fields: getFormSnapshot(type)
   };
@@ -426,6 +442,9 @@ function renderHistory() {
 function loadHistoryItem(item) {
   // Switch to write tab and load type
   switchTab('tab-write');
+  if (item.tag && TAG_CAPACITIES[item.tag]) {
+    document.querySelector(`.tag-option[data-tag="${item.tag}"]`)?.click();
+  }
   selectType(item.type);
 
   if (item.fields) {
@@ -452,6 +471,14 @@ async function startNfcWrite() {
     recordsData = buildRecords();
   } catch (err) {
     showToast(err.message, 'error');
+    playSound('error');
+    return;
+  }
+
+  const estimatedBytes = estimateRecordBytes(recordsData.records);
+  const tagCapacity = getSelectedTagCapacity();
+  if (estimatedBytes > tagCapacity) {
+    showToast(`El contenido ocupa aproximadamente ${estimatedBytes}B y supera la capacidad del ${state.selectedTag} (${tagCapacity}B).`, 'error');
     playSound('error');
     return;
   }
@@ -796,6 +823,19 @@ function init() {
   document.querySelectorAll('.type-pill').forEach(pill => {
     pill.addEventListener('click', () => {
       selectType(pill.getAttribute('data-type'));
+    });
+  });
+
+  document.querySelectorAll('.tag-option').forEach(option => {
+    option.addEventListener('click', () => {
+      state.selectedTag = option.getAttribute('data-tag');
+      document.querySelectorAll('.tag-option').forEach(item => {
+        const selected = item === option;
+        item.classList.toggle('active', selected);
+        item.setAttribute('aria-pressed', String(selected));
+      });
+      document.getElementById('selected-tag-label').textContent = state.selectedTag;
+      updateSizeEstimate();
     });
   });
 

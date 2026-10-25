@@ -68,6 +68,28 @@
 
     <!-- TAB: WRITE NFC -->
     <main id="tab-write" class="tab-content active">
+      <section class="tag-selector-card glass" aria-labelledby="tag-selector-title">
+        <div class="card-header">
+          <h2 id="tag-selector-title">Tipo de chip</h2>
+          <span class="tag-chip" id="selected-tag-label">NTAG213</span>
+        </div>
+        <div class="tag-options" role="group" aria-label="Seleccionar capacidad del chip">
+          <button type="button" class="tag-option active" data-tag="NTAG213" aria-pressed="true">
+            <strong>NTAG213</strong>
+            <small>144 bytes</small>
+          </button>
+          <button type="button" class="tag-option" data-tag="NTAG215" aria-pressed="false">
+            <strong>NTAG215</strong>
+            <small>504 bytes</small>
+          </button>
+          <button type="button" class="tag-option" data-tag="NTAG216" aria-pressed="false">
+            <strong>NTAG216</strong>
+            <small>888 bytes</small>
+          </button>
+        </div>
+        <p class="field-hint">Selecciona el modelo que vas a grabar. Por defecto usamos NTAG213.</p>
+      </section>
+
       <!-- Record Type Selector -->
       <section class="card glass">
         <div class="card-header">
@@ -236,7 +258,7 @@
         <div class="size-indicator-bar">
           <div class="size-labels">
             <span>Tamaño estimado: <strong id="bytes-count">0</strong> bytes</span>
-            <span class="chip-capacity">Compatible con NTAG213 (144B), 215 (504B), 216 (888B)</span>
+            <span class="chip-capacity" id="chip-capacity-label">Capacidad seleccionada: NTAG213 (144B)</span>
           </div>
           <div class="progress-track">
             <div class="progress-fill" id="size-progress" style="width: 5%;"></div>
